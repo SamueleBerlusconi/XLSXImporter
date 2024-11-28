@@ -1,92 +1,138 @@
 # XLSXImporter
-Alternative utility class used to import data from XLSX files without using Data Sources.
 
-# Manual
-This class enables the import of an Excel file into a selected table, giving you complete control over each stage of the process.
+A utility class designed to import data from XLSX files into ServiceNow tables, bypassing the use of Data Sources. This class offers granular control over the import process, enabling advanced mapping, transformation, validation, and event handling.
 
-## Operation Result Structure
+# Overview
 
-The result of the imports are returned in an araay of object with the following keys:
-  -  **row**: Number of row in the Excel file
-  -  **code**: Internal code representing the result of parsing for this row
-  -  **message**: A human readable message representing the result of parsing for this row
-  -  **target**: SysID of the created or updated record (if created/updated)
-  -  **error**: Unexpected error occourred while parsing the row (if an error occours)
+The XLSXImporter class provides a highly customizable way to import Excel files into a target table. It allows full control over data mapping, transformation, and validation, ensuring flexibility and precision throughout the process.
 
 ## Fields Mapping
-The file's columns are initially mapped to the fields in the table that share the same label.
+
+Columns in the file are automatically mapped to fields in the table with matching labels.
 
 However, you may use the mapping method to assign a specific header to a field.
 
 ```javascript
+var importer = new XLSXImporter();
 importer.map("% Gen", "u_january"); // Header "% Gen" goes into field "u_january"
 ```
 
 ## Transform Methods
+
 The transform method lets you specify a custom function to transform a given value for a particular field.
 
-Multiple functions can be created and added to process the value of a given field.
+Multiple functions can be created and added to process the value of a given field and will be processed sequentially.
 
 ```javascript
 var stringToBool = function(value) { return value === "YES"; }
 var negateBool = function (value) { return !value; }
+
+var importer = new XLSXImporter();
 importer.transform("u_frozen", stringToBool); // Transform cell values with "YES" into boolean true
 importer.transform("u_frozen", negateBool); // Convert true to false and viceversa
 ```
 
 ## Coalescing Fields
-The coalesce method can define one or more fields as coalescing fields to determine whether to create or update a preexisting record.
+
+The `coalesce` method allows you to define fields that determine whether to create a new record or update an existing one.
+
+Specifically, if all the coalescing fields from the file row are the same of an existing record in the table, the data will be updated, otherwise a new record will be created.
 
 ```javascript
+var importer = new XLSXImporter();
 importer.coalesce("u_name");
 importer.coalesce("u_last_name");
 ```
 
 ## Require or ignore a header
-It's possible to set as mandatory or ignore a specific header.
+
+You can designate a header as mandatory or ignore it entirely during the import process:
+
+A **mandatory** header triggers an error if it is missing from the file. The import process will fail, returning the code `XLSXImporter.STATES.MISSING_REQUIRED_HEADER`.
+
+An **ignored** header ensures that the corresponding column is excluded from the import for all rows, while the remaining column values are processed as usual.
+
+A mandatory header cannot be ignored and vice-versa.
 
 ```javascript
-importer.ignore("User Name"); // Will skip the header if found
-importer.require("User ID")); // Will skip the row if missing
+var importer = new XLSXImporter();
+importer.ignore("User Name"); // The specific column will not be imported
+importer.require("User ID"); // The entire import will fails if the column is missing
 ```
 
 ## Validation Methods
-For every field one or more validation methods could be defined:\
-Said methods could accept only two parameters, the row data and the name of the current field evaluated, and must return a boolean value (true when the row is valid, false otherwise).
 
-They will be executed in a FIFO stack and if even one of the methods fail, the entire row will be skipped.
+The `validate` method lets you define validation rules for specific fields.\
+Validation methods accept two parameters: `row` (the current row's data) and `field` (the field being validated).
+
+These methods must return a boolean value, with `false` skipping the row.
+
+Validation methods are executed in a FIFO order, and failure of any method will prevent the row from being processed further.
 
 ```javascript
 var isEmpty(row, field) { return !gs.nil(row[field]); }
+
+var importer = new XLSXImporter();
 importer.validate("u_description", isEmpty) // Will skip the row if the "u_description" field in the row is empty
 ```
 
 ## Event Callbacks
-Multiple callbacks are available while parsing a row, every callback accept a signle parameter "data" that could contains:
- -  **row**: Contains the header names as keys and the cell values as values
- -  **index**: Number of the current row
- -  **sys_id**: SysID of the created record
 
-As follows the available callbacks with the possible parameters:
-- **onRowRead** (Parameters: row, index): 
-  -  This is executed after the single row is read from the file but transformation functions are not yet performed.
-  -  The "row" parameter contains the header names as keys and the cell values as values.
-  -  By returning a boolean value of "false", the current row will be skipped and not inserted.
-- **onRowValidating** (Parameters: row, index): 
-  -  This is executed after the mapping but before the single row is validated.
-  -  The "row" parameter contains the field names as keys and the cell values as values.
-  -  By returning a boolean value of "false", the current row will be skipped and not inserted.
-- **onRowValidated** (Parameters: row, index): 
-  -  This is executed after the single row is successfully validated.
-  -  The "row" parameter contains the field names as keys and the cell values as values.
-  -  By returning a boolean value of "false", the current row will be skipped and not inserted.
-- **onRowTransformed** (Parameters: row, index):
-  -  This is executed after the transformation and mapping functions are executed.
-  -  The "row" parameter contains the field names as keys and the data to be inserted as values.
-  -  By returning a boolean value of "false", the current row will be skipped and not inserted.
-- **onRowImported** (Parameters: sys_id, row, index) 
-  -  This is executed after creating or updating a record.
-  -  The "sys_id" parameter represents the SysID of the created/updated record.
-  -  The "row" parameter contains the field names as keys and the data to be inserted as values.
-  -  The data parameter also uses final field names as keys, with values representing the data to be inserted.
-  -  No return value would be kept in consideration 
+Multiple events are available while parsing a row, every callback accept a single parameter `data` that could contains:
+
+| Key      | Type     | Value                                                                       |
+|:---------|:---------|:----------------------------------------------------------------------------|
+| `row`    | `Object` | The current row's data, with header names as keys and cell values as values |
+| `index`  | `Number` | The row index in the file                                                   |
+| `sys_id` | `String` | The SysID of the created or updated record (if applicable)                  |
+
+The following events are available:
+
+| Event              | Execution                                                             | Parameters                    | Return value                                             |
+|:-------------------|:----------------------------------------------------------------------|:------------------------------|:---------------------------------------------------------|
+| `onRowRead`        | Executed after reading a row from file but before any transformations | `row` (header names), `index` | Return `false` to skip the row                           |
+| `onRowValidating`  | Executed after mapping but before row validation                      | `row` (field names), `index`  | Return `false` to skip the row                           |
+| `onRowValidated`   | Executed after successful row validation                              | `row` (field names), `index`  | Return `false` to skip the row                           |
+| `onRowTransformed` | Executed after applying transformations and mappings functions        | `row` (field names), `index`  | Return `false` to skip the row                           |
+| `onRowImported`    | Executed after the record is created or updated                       | `row` (field names), `index`, `sys_id` |This callback is informational; its return value is ignored|
+
+## Result Structures
+
+The result of the import operation is returned as an object with the following structure:
+| Key       | Type      | Value                                                                                   |
+|:----------|:----------|:----------------------------------------------------------------------------------------|
+| `success` | `Boolean` | Success result of the import                                                            |
+| `code`    | `String`  | Specific `XLSXImporter.STATES` result code of the operation                             |
+| `message` | `String`  | Message related to the current operation                                                |
+| `rows`    | `Number`  | Number of processed rows                                                                |
+| `elapsed` | `Number`  | Time elapsed for the import process in milliseconds                                     |
+| `data`    | `Object`  | Optional data object, will contains an array of row results if the import is successful |
+
+Every row parsed will also create a result object, structured as follows:
+| Key       | Type     | Value                                                                            |
+|:----------|:---------|:---------------------------------------------------------------------------------|
+| `row`     | `Number` | Number of row in the Excel file                                                  |
+| `code`    | `Number` | `XLSXImporter.RCODES` code representing the result of parsing for this row       |
+| `message` | `String` | A human readable message representing the result of parsing for this row         |
+| `target`  | `String` | SysID of the created or updated record (if created/updated) or target field name |
+| `error`   | `Error`  | Unexpected error occourred while parsing the row (if an error occours)           |
+
+### Response Codes
+
+The `XLSXImporter.STATES` object contains codes that are used as response codes for the entire import operation:
+
+| Code                      | Value                     | Description                                                                 |
+|:--------------------------|:--------------------------|:----------------------------------------------------------------------------|
+| `SUCCESS`                 | `success`                 | Returned when the import is correctly terminated                            |
+| `PARSING_ERROR`           | `parsing_error`           | Returned when the `sn_impex.GlideExcelParser` is not correctly instantiated |
+| `MISSING_REQUIRED_HEADER` | `missing_required_header` | Returned when a required header is missing in the XLSX file                 |
+
+The `XLSXImporter.RCODES` object contains codes that are used as response codes for the single row parsing:
+
+| Code                      | Value | Description                                                                                                                                      |
+|:--------------------------|:------|:-------------------------------------------------------------------------------------------------------------------------------------------------|
+| `SUCCESS`                 | `0`   | Returned when a row is correclty parsed                                                                                                          |
+| `SKIPPED_EMPTY`           | `1`   | Returned when the entire row is empty                                                                                                            |
+| `SKIPPED_EVENT`           | `2`   | Returned when the following events return a `false` value: `onRowRead`, `onRowValidating`, `onRowValidated`, `onRowTransformed`, `onRowImported` |
+| `SKIPPED_VALIDATION`      | `3`   | Returned when a row validation fails                                                                                                             |
+| `ERROR`                   | `4`   | Returned when an unhandled error occours while parsing a row                                                                                     |
