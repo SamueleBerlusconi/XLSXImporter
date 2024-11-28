@@ -1,6 +1,6 @@
 # XLSXImporter
 
-A utility class designed to import data from XLSX files into ServiceNow tables, bypassing the use of Data Sources. This class offers granular control over the import process, enabling advanced mapping, transformation, validation, and event handling.
+A utility class designed to import data from XLSX files into ServiceNow tables, bypassing the use of Data Sources. Offers granular control over the import process, enabling advanced mapping, transformation, validation, and event handling.
 
 # Overview
 
@@ -73,7 +73,7 @@ Validation methods are executed in a FIFO order, and failure of any method will 
 var isEmpty(row, field) { return !gs.nil(row[field]); }
 
 var importer = new XLSXImporter();
-importer.validate("u_description", isEmpty) // Will skip the row if the "u_description" field in the row is empty
+importer.validate("u_description", isEmpty) // Will skip the row if the "u_description" row field is empty
 ```
 
 ## Event Callbacks
