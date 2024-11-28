@@ -73,7 +73,7 @@ Validation methods are executed in a FIFO order, and failure of any method will 
 var isEmpty(row, field) { return !gs.nil(row[field]); }
 
 var importer = new XLSXImporter();
-importer.validate("u_description", isEmpty) // Will skip the row if the "u_description" row field is empty
+importer.validate("u_description", isEmpty) // Skip the row if the "u_description" field is empty
 ```
 
 ## Event Callbacks
